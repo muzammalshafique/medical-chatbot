@@ -19,11 +19,7 @@ app.secret_key = "599a121a760a3b21d3e14af8bf1690397a9963976c522ec4f049284854ec0c
 load_dotenv()
 
 PINECONE_API_KEY=os.environ.get('PINECONE_API_KEY')
-OPENAI_API_KEY=os.environ.get('OPENAI_API_KEY')
-
-os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-
+GROQ_API_KEY=os.environ.get('GROQ_API_KEY')
 
 embeddings = download_embeddings()
 
