@@ -1,10 +1,12 @@
-mkrdir -p src
+echo "Running template.sh..."
+
+mkdir -p src
 mkdir -p research
 
 touch src/__init__.py
 touch src/helper.py
 touch src/prompt.py
-touch .evn
+touch .env
 touch setup.py
 touch app.py
 touch readme.md
