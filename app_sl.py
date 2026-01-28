@@ -334,7 +334,6 @@ def answer_question(query):
     response = rag_chain.invoke({"input": query})
     return response["answer"]
 
-# =====================
 # UI START
 # =====================
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
