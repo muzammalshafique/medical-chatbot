@@ -1,4 +1,4 @@
-# Build-a-Complete-Medical-Chatbot-with-LLMs-LangChain-Pinecone-Flask-AWS
+# Build a Complete Brain Aneurysm Medical Chatbot with LLMs, LangChain, Pinecone, and Flask
 
 # How to run?
 ### STEPS:
