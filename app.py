@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from src.prompt import *
 import os
 import uuid
+from langchain.chains.retrieval import create_retrieval_chain
 
 app = Flask(__name__)
 
@@ -33,6 +34,11 @@ chatModel = ChatGroq(
     groq_api_key=GROQ_API_KEY,
     temperature=0.7
 )
+
+# response = chatModel.invoke("Who developed you?")
+# print(f"Model ID: {response.response_metadata.get('model_name')}")
+# print(f"System Info: {response.response_metadata}")
+# print(f"System Info: {response.response_metadata.get('system_info')}")
 
 # chatModel = HuggingFaceEndpoint(
 #     repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
