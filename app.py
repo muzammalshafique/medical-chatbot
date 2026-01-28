@@ -1,7 +1,6 @@
 from flask import Flask, render_template, jsonify, request, session
 from src.helper import download_embeddings
 from langchain_pinecone import PineconeVectorStore
-# from langchain_community.chat_models import ChatOllama
 from langchain_groq import ChatGroq
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -10,7 +9,6 @@ from dotenv import load_dotenv
 from src.prompt import *
 import os
 import uuid
-from langchain_huggingface import HuggingFaceEndpoint
 
 app = Flask(__name__)
 
@@ -47,12 +45,10 @@ chatModel = ChatGroq(
 #     task="conversational",
 # )
 
-# Store conversation histories for each session
 conversation_histories = {}
 
 @app.route("/")
 def index():
-    # Create unique session ID for each user
     if 'session_id' not in session:
         session['session_id'] = str(uuid.uuid4())
     return render_template('chat.html')
@@ -63,40 +59,32 @@ def chat():
     msg = request.form["msg"]
     session_id = session.get('session_id')
     
-    # Initialize conversation history for new sessions
     if session_id not in conversation_histories:
         conversation_histories[session_id] = []
     
     chat_history = conversation_histories[session_id]
     
-    # Build conversation context from history
     history_context = ""
     if chat_history:
         history_context = "\n\nPrevious conversation context:\n"
-        # Include last 5 exchanges for context
         for human_msg, ai_msg in chat_history[-5:]:
             history_context += f"User: {human_msg}\nAssistant: {ai_msg}\n\n"
     
-    # Create prompt with conversation history
     prompt_with_memory = ChatPromptTemplate.from_messages([
         ("system", system_prompt + "\n\nYou have access to previous conversation context. Use it to provide relevant and contextual responses. If the user asks follow-up questions, refer back to the previous conversation."),
         ("human", f"{history_context}Current question: {{input}}")
     ])
     
-    # Create chains with memory-enhanced prompt
     question_answer_chain = create_stuff_documents_chain(chatModel, prompt_with_memory)
     rag_chain = create_retrieval_chain(retriever, question_answer_chain)
     
-    # Get response
     print(f"Session {session_id} - User: {msg}")
     response = rag_chain.invoke({"input": msg})
     answer = response["answer"]
     print(f"Session {session_id} - Bot: {answer}")
     
-    # Store conversation in history
     chat_history.append((msg, answer))
     
-    # Keep only last 10 exchanges to prevent memory overflow
     if len(chat_history) > 10:
         chat_history.pop(0)
     

@@ -1,247 +1,436 @@
+import os
 import streamlit as st
-from src.helper import download_embeddings
+from dotenv import load_dotenv
+
 from langchain_pinecone import PineconeVectorStore
 from langchain_groq import ChatGroq
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-from dotenv import load_dotenv
-from src.prompt import *
-import os
-import uuid
 
-# Page configuration
+from src.helper import download_embeddings
+from src.prompt import system_prompt
+
+import base64
+
+def img_to_base64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+BRAIN_BG = img_to_base64("static/images/brain_aneurysm.png")
+ICON_BG = img_to_base64("static/images/icon.png")
+
+# =====================
+# PAGE CONFIG
+# =====================
 st.set_page_config(
     page_title="Brain Aneurysm Medical Assistant",
     page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered"
 )
 
-# Custom CSS
-st.markdown("""
+# =====================
+# ENV
+# =====================
+load_dotenv()
+os.environ["PINECONE_API_KEY"] = os.getenv("PINECONE_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# =====================
+# SESSION STATE
+# =====================
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# =====================
+# CSS
+# =====================
+st.markdown(f"""
 <style>
-    .main {
-        max-width: 900px;
-        margin: 0 auto;
-    }
-    .stAlert {
-        background-color: #fff3cd;
-        border: 1px solid #ffc107;
-        border-radius: 8px;
-        padding: 12px;
-        color: #856404;
-    }
-    .chat-message {
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-        display: flex;
-        flex-direction: column;
-    }
-    .chat-message.user {
-        background-color: #667eea;
-        color: white;
-        align-items: flex-end;
-    }
-    .chat-message.bot {
-        background-color: #f0f2f6;
-        color: #333;
-    }
-    .chat-message .avatar {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-    }
-    .quick-question-btn {
-        margin: 0.25rem;
-    }
-    div[data-testid="stButton"] > button {
-        width: 100%;
-    }
+
+/* Hide Streamlit branding */
+#MainMenu {{visibility: hidden;}}
+footer {{visibility: hidden;}}
+header {{visibility: hidden;}}
+
+/* Full page background gradient */
+.stApp {{
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}}
+
+/* Remove default padding */
+.block-container {{
+    padding: 2rem 1rem;
+    max-width: 700px;
+}}
+
+/* Hide default streamlit elements */
+.element-container {{
+    margin-bottom: 0 !important;
+}}
+
+/* Main container */
+.main-container {{
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    overflow: hidden;
+}}
+
+/* Header section */
+.header {{
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    padding: 22px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}}
+
+.header-left {{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}}
+
+.header-icon {{
+    width: 48px;
+    height: 48px;
+    background: white;
+    border-radius: 50%;
+    padding: 6px;
+}}
+
+.header-text h1 {{
+    font-size: 19px;
+    margin: 0;
+    font-weight: 600;
+    color: white;
+}}
+
+.header-text p {{
+    font-size: 12px;
+    opacity: 0.95;
+    margin: 3px 0 0 0;
+    color: white;
+}}
+
+/* Disclaimer */
+.disclaimer {{
+    background: #fff9e6;
+    border-left: 4px solid #ffc107;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px;
+    font-size: 13px;
+    color: #856404;
+    line-height: 1.5;
+}}
+
+/* Chat area */
+.chat-area {{
+    min-height: 400px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 25px;
+    background: 
+        linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)),
+        url("data:image/png;base64,{BRAIN_BG}");
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 350px auto;
+}}
+
+.chat-area::-webkit-scrollbar {{
+    width: 6px;
+}}
+
+.chat-area::-webkit-scrollbar-thumb {{
+    background: #ccc;
+    border-radius: 3px;
+}}
+
+/* Welcome message */
+.welcome {{
+    text-align: center;
+    padding: 80px 30px;
+}}
+
+.welcome h2 {{
+    font-size: 20px;
+    color: #333;
+    margin-bottom: 12px;
+}}
+
+.welcome p {{
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+}}
+
+/* Chat messages */
+.msg {{
+    margin-bottom: 16px;
+    display: flex;
+}}
+
+.msg.user {{
+    justify-content: flex-end;
+}}
+
+.msg.bot {{
+    justify-content: flex-start;
+}}
+
+.bubble {{
+    max-width: 68%;
+    padding: 11px 16px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.5;
+}}
+
+.user .bubble {{
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-bottom-right-radius: 4px;
+}}
+
+.bot .bubble {{
+    background: #f0f0f0;
+    color: #333;
+    border-bottom-left-radius: 4px;
+}}
+
+/* Quick buttons area */
+.quick-area {{
+    padding: 14px 16px;
+    border-top: 1px solid #e5e5e5;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    display: flex;
+    gap: 8px;
+}}
+
+.quick-area::-webkit-scrollbar {{
+    height: 5px;
+}}
+
+.quick-area::-webkit-scrollbar-thumb {{
+    background: #bbb;
+    border-radius: 3px;
+}}
+
+/* Input area */
+.input-area {{
+    padding: 16px;
+    border-top: 1px solid #e5e5e5;
+    background: #fafafa;
+}}
+
+/* Streamlit button overrides */
+div[data-testid="column"] {{
+    padding: 0 !important;
+}}
+
+.stButton {{
+    margin: 0;
+}}
+
+.stButton button {{
+    width: 100%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}}
+
+.stButton button:hover {{
+    opacity: 0.92;
+    transform: translateY(-1px);
+}}
+
+/* Clear button style */
+.clear-btn button {{
+    background: rgba(255,255,255,0.25) !important;
+    border: 1px solid rgba(255,255,255,0.4) !important;
+    padding: 7px 16px !important;
+    font-size: 12px !important;
+}}
+
+.clear-btn button:hover {{
+    background: rgba(255,255,255,0.35) !important;
+}}
+
+/* Send button */
+.send-btn button {{
+    border-radius: 50% !important;
+    width: 46px !important;
+    height: 46px !important;
+    padding: 0 !important;
+    font-size: 20px !important;
+    min-width: 46px !important;
+}}
+
+/* Input field */
+.stTextInput input {{
+    border-radius: 24px;
+    border: 1px solid #ddd;
+    padding: 12px 20px;
+    font-size: 14px;
+    background: white;
+}}
+
+.stTextInput input:focus {{
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}}
+
 </style>
 """, unsafe_allow_html=True)
 
-# Load environment variables
-load_dotenv()
-
-PINECONE_API_KEY = os.environ.get('PINECONE_API_KEY')
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-
-os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
-os.environ["GROQ_API_KEY"] = GROQ_API_KEY
-
-# Initialize session state
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
-if 'conversation_history' not in st.session_state:
-    st.session_state.conversation_history = []
-
-# Initialize models (cached to avoid reloading)
+# =====================
+# VECTOR STORE (CACHE)
+# =====================
 @st.cache_resource
-def initialize_models():
-    """Initialize embeddings, vector store, and chat model"""
-    print("Loading embeddings...")
+def load_vectorstore():
     embeddings = download_embeddings()
-    
-    print("Connecting to Pinecone...")
-    index_name = "medical-chatbot"
-    docsearch = PineconeVectorStore.from_existing_index(
-        index_name=index_name,
+    return PineconeVectorStore.from_existing_index(
+        index_name="medical-chatbot",
         embedding=embeddings
     )
-    
-    retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k": 3})
-    
-    print("Initializing ChatGroq...")
-    chatModel = ChatGroq(
-        model="groq/compound",
-        groq_api_key=GROQ_API_KEY,
-        temperature=0.7
-    )
-    
-    return retriever, chatModel
 
-# Load models
-retriever, chatModel = initialize_models()
+vectorstore = load_vectorstore()
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
-def get_response(message):
-    """Get response from the chatbot with conversation memory"""
-    
-    # Build conversation context from history
-    history_context = ""
-    if st.session_state.conversation_history:
-        history_context = "\n\nPrevious conversation context:\n"
-        # Include last 5 exchanges for context
-        for human_msg, ai_msg in st.session_state.conversation_history[-5:]:
-            history_context += f"User: {human_msg}\nAssistant: {ai_msg}\n\n"
-    
-    # Create prompt with conversation history
-    prompt_with_memory = ChatPromptTemplate.from_messages([
-        ("system", system_prompt + "\n\nYou have access to previous conversation context. Use it to provide relevant and contextual responses. If the user asks follow-up questions, refer back to the previous conversation."),
-        ("human", f"{history_context}Current question: {{input}}")
-    ])
-    
-    # Create chains with memory-enhanced prompt
-    question_answer_chain = create_stuff_documents_chain(chatModel, prompt_with_memory)
-    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-    
-    try:
-        # Get response
-        print(f"Session {st.session_state.session_id[:8]} - User: {message}")
-        response = rag_chain.invoke({"input": message})
-        answer = response["answer"]
-        print(f"Session {st.session_state.session_id[:8]} - Bot: {answer[:100]}...")
-        
-        # Store conversation in history
-        st.session_state.conversation_history.append((message, answer))
-        
-        # Keep only last 10 exchanges
-        if len(st.session_state.conversation_history) > 10:
-            st.session_state.conversation_history.pop(0)
-        
-        return answer
-        
-    except Exception as e:
-        error_msg = f"Sorry, I encountered an error: {str(e)}"
-        print(f"Error: {error_msg}")
-        return error_msg
-
-def clear_chat():
-    """Clear chat history"""
-    st.session_state.messages = []
-    st.session_state.conversation_history = []
-    st.session_state.session_id = str(uuid.uuid4())
-    print(f"Cleared history, new session: {st.session_state.session_id[:8]}")
-
-# Sidebar
-with st.sidebar:
-    st.markdown("### 🧠 Brain Aneurysm Assistant")
-    st.markdown("---")
-    
-    st.markdown("### 💡 Quick Questions")
-    
-    quick_questions = [
-        "What is a brain aneurysm?",
-        "What are the symptoms?",
-        "What causes it?",
-        "How is it diagnosed?",
-        "Treatment options?",
-        "Risk factors?",
-        "Can it be prevented?",
-        "Recovery time?"
-    ]
-    
-    for question in quick_questions:
-        if st.button(question, key=f"quick_{question}", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": question})
-            with st.spinner("Thinking..."):
-                response = get_response(question)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-            st.rerun()
-    
-    st.markdown("---")
-    
-    if st.button("🗑️ Clear Chat", use_container_width=True):
-        clear_chat()
-        st.rerun()
-    
-    st.markdown("---")
-    st.markdown(f"**Session ID:** `{st.session_state.session_id[:8]}...`")
-    st.markdown(f"**Messages:** {len(st.session_state.messages)}")
-    st.markdown(f"**History:** {len(st.session_state.conversation_history)} exchanges")
-
-# Main content
-st.title("🧠 Brain Aneurysm Medical Assistant")
-st.markdown("### AI-powered healthcare information and support")
-
-# Disclaimer
-st.warning("⚕️ **Medical Disclaimer:** This chatbot provides general information only and is not a substitute for professional medical advice, diagnosis, or treatment.")
-
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🩺"):
-        st.markdown(message["content"])
-
-# Chat input
-if prompt := st.chat_input("Type your question here..."):
-    # Add user message to chat
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
-    
-    # Get bot response
-    with st.chat_message("assistant", avatar="🩺"):
-        with st.spinner("Thinking..."):
-            response = get_response(prompt)
-            st.markdown(response)
-    
-    # Add assistant response to chat
-    st.session_state.messages.append({"role": "assistant", "content": response})
-
-# Welcome message if no messages
-if len(st.session_state.messages) == 0:
-    st.markdown("---")
-    st.markdown("""
-    ### 👋 Welcome to Your Medical Assistant
-    
-    I'm here to help answer your questions about brain aneurysms. Feel free to ask me anything, and I'll do my best to provide accurate and helpful information based on medical knowledge.
-    
-    You can:
-    - Type your question in the chat box below
-    - Click on quick questions in the sidebar
-    - Ask follow-up questions (I remember our conversation!)
-    """)
-
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #666; font-size: 0.9rem;'>"
-    "Powered by LangChain, Groq, and Pinecone | "
-    "Built with Streamlit"
-    "</div>",
-    unsafe_allow_html=True
+llm = ChatGroq(
+    model="groq/compound",
+    groq_api_key=GROQ_API_KEY,
+    temperature=0.7
 )
+
+# =====================
+# RAG FUNCTION
+# =====================
+def answer_question(query):
+    history_context = ""
+    for u, a in st.session_state.chat_history[-5:]:
+        history_context += f"User: {u}\nAssistant: {a}\n\n"
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", history_context + "\nCurrent question: {input}")
+    ])
+
+    qa_chain = create_stuff_documents_chain(llm, prompt)
+    rag_chain = create_retrieval_chain(retriever, qa_chain)
+
+    response = rag_chain.invoke({"input": query})
+    return response["answer"]
+
+# =====================
+# UI START
+# =====================
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
+
+# HEADER
+col_left, col_right = st.columns([5, 1])
+
+with col_left:
+    st.markdown(f"""
+    <div class="header">
+        <div class="header-left">
+            <img class="header-icon" src="data:image/png;base64,{ICON_BG}">
+            <div class="header-text">
+                <h1>Brain Aneurysm Medical Assistant</h1>
+                <p>AI-powered healthcare information and support</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_right:
+    st.markdown('<div style="position: absolute; top: 32px; right: 28px; z-index: 100;" class="clear-btn">', unsafe_allow_html=True)
+    if st.button("🗑️ Clear Chat"):
+        st.session_state.chat_history = []
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# DISCLAIMER
+st.markdown("""
+<div class="disclaimer">
+💡 <strong>Medical Disclaimer:</strong> This chatbot provides general information only and is not a substitute for professional medical advice, diagnosis, or treatment.
+</div>
+""", unsafe_allow_html=True)
+
+# CHAT AREA
+st.markdown('<div class="chat-area">', unsafe_allow_html=True)
+
+if len(st.session_state.chat_history) == 0:
+    st.markdown("""
+    <div class="welcome">
+        <h2>👋 Welcome to Your Brain Aneurysm Medical Assistant</h2>
+        <p>I'm here to help answer your questions about brain aneurysms. Feel free to ask me anything, and I'll do my best to provide accurate and helpful information based on medical knowledge.</p>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    for role, msg in st.session_state.chat_history:
+        st.markdown(f"""
+        <div class="msg {role}">
+            <div class="bubble">{msg}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# QUICK QUESTIONS
+st.markdown('<div class="quick-area">', unsafe_allow_html=True)
+
+questions = [
+    "What is a brain aneurysm?",
+    "What are the symptoms?",
+    "What causes it?",
+    "How is it diagnosed?",
+    "Treatment options?",
+    "Risk factors?",
+    "Can it be prevented?",
+    "Recovery time?"
+]
+
+cols = st.columns(len(questions))
+for i, q in enumerate(questions):
+    with cols[i]:
+        if st.button(q, key=f"q{i}"):
+            ans = answer_question(q)
+            st.session_state.chat_history.append(("user", q))
+            st.session_state.chat_history.append(("bot", ans))
+            st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# INPUT AREA
+st.markdown('<div class="input-area">', unsafe_allow_html=True)
+
+c1, c2 = st.columns([6, 1])
+
+with c1:
+    query = st.text_input("Type your question here...", label_visibility="collapsed", key="input")
+
+with c2:
+    st.markdown('<div class="send-btn">', unsafe_allow_html=True)
+    if st.button("➤"):
+        if query:
+            ans = answer_question(query)
+            st.session_state.chat_history.append(("user", query))
+            st.session_state.chat_history.append(("bot", ans))
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
