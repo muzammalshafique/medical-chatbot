@@ -28,10 +28,6 @@ docsearch = PineconeVectorStore.from_existing_index(
 
 retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
-# chatModel = ChatOllama(
-#     model="llama3",
-# )
-
 chatModel = ChatGroq(
     model="groq/compound",
     groq_api_key=GROQ_API_KEY,
